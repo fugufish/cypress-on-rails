@@ -7,9 +7,9 @@ module CypressDev
   # Middleware to handle cypress commands and eval
   class Middleware
     def initialize(app, command_executor = CommandExecutor, file = ::File)
-      @app = app
+      @app              = app
       @command_executor = command_executor
-      @file = file
+      @file             = file
     end
 
     def call(env)
@@ -31,34 +31,29 @@ module CypressDev
       configuration.logger
     end
 
-    Command = Struct.new(:name, :options, :cypress_folder) do
-      # @return [Array<Cypress::Middleware::Command>]
-      def self.from_body(body, configuration)
-        if body.is_a?(Array)
-          command_params = body
-        else
-          command_params = [body]
-        end
-        command_params.map do |params|
-          new(params.fetch('name'), params['options'], configuration.cypress_folder)
-        end
-      end
 
-      def file_path
-        "#{cypress_folder}/app_commands/#{name}.rb"
+    def command_from_body(body)
+      command_params = body.is_a?(Array) ? body : [body]
+      command_params.map do |params|
+        { file_path: file_path_for(params["name"]), options: params["options"] }
       end
+    end
+
+    def file_path_for(name)
+      "#{configuration.cypress_folder}/app_commands/#{name}.rb"
     end
 
     def handle_command(req)
       body = JSON.parse(req.body.read)
       logger.info "handle_command: #{body}"
-      commands = Command.from_body(body, configuration)
-      missing_command = commands.find {|command| !@file.exists?(command.file_path) }
+      commands        = command_from_body(body)
+      missing_command = commands.find { |command| !@file.exists?(command[:file_path]) }
       if missing_command.nil?
-        commands.each { |command| @command_executor.load(command.file_path, logger, command.options) }
-        [201, {}, ['success']]
+        results = commands.map { |command| @command_executor.load(command[:file_path], logger, command[:options]) }
+          .select { |r| r.is_a? String }
+        [201, {}, [{ callbacks: results }]]
       else
-        [404, {}, ["could not find command file: #{missing_command.file_path}"]]
+        [404, {}, ["could not find command file: #{missing_command[:file_path]}"]]
       end
     end
   end
