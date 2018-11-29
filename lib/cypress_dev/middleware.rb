@@ -55,7 +55,7 @@ module CypressDev
       commands = Command.from_body(body, configuration)
       missing_command = commands.find {|command| !@file.exists?(command.file_path) }
       if missing_command.nil?
-        commands.each { |command| @command_executor.load(command.file_path, command.options) }
+        commands.each { |command| @command_executor.load(command.file_path, logger, command.options) }
         [201, {}, ['success']]
       else
         [404, {}, ["could not find command file: #{missing_command.file_path}"]]
